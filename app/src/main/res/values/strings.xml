@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">The Capitalist</string>
+    <string name="facebook_app_id">106285398039194</string>
+    <string name="fb_login_protocol_scheme">fb106285398039194</string>
+
+    <string name="error_login">Falha na conexão</string>
+    <string name="firebase_error_login">Erro Firebase</string>
+</resources>

@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "636714385831",
+    "project_id": "the-capitalist-7151b",
+    "storage_bucket": "the-capitalist-7151b.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:636714385831:android:a9c31a8e9ee828b1def682",
+        "android_client_info": {
+          "package_name": "com.relyon.thecapitalist"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "636714385831-mgl2t8b1b010e4ua6omhqnjb2b8dkl35.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.relyon.thecapitalist",
+            "certificate_hash": "e536e2f5575ebdcb8e5647f1600799df951e128e"
+          }
+        },
+        {
+          "client_id": "636714385831-ilcoti6m70ie3oct2snqao1gp2464h6i.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNlT9BVxdsNM9HmaTzBnc2neS1-vQYEqI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "636714385831-ilcoti6m70ie3oct2snqao1gp2464h6i.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

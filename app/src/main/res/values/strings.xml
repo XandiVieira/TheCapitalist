@@ -5,4 +5,6 @@
 
     <string name="error_login">Falha na conexão</string>
     <string name="firebase_error_login">Erro Firebase</string>
+    <string name="create_match">Create Match</string>
+    <string name="find_match">Find Matches</string>
 </resources>

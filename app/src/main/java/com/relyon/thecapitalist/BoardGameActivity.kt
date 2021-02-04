@@ -15,6 +15,7 @@ import com.google.firebase.database.ChildEventListener
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.ValueEventListener
+import com.relyon.thecapitalist.adapter.BoardPositionAdapter
 import com.relyon.thecapitalist.enums.BoardRegion
 import com.relyon.thecapitalist.model.BoardPosition
 import com.relyon.thecapitalist.model.Coordinate
@@ -22,10 +23,6 @@ import com.relyon.thecapitalist.model.Match
 import com.relyon.thecapitalist.model.Player
 import com.relyon.thecapitalist.util.Constants
 import com.relyon.thecapitalist.util.Util
-import java.util.*
-import kotlin.collections.ArrayList
-import kotlin.collections.HashMap
-
 
 class BoardGameActivity : AppCompatActivity(), ChangePosition {
 
@@ -47,12 +44,14 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
         imageView?.add(0, ImageView(this))
         imageView?.add(1, ImageView(this))
 
-        if (Util.user?.uid == "ztr92NNX0fX7NIEaj1OFaHUIBFx1") {
-            createMatch()
-        } else {
-            findMatch()
+        val matchUID: String = intent.getStringExtra(Constants.MATCH_UID).toString()
+        val playerNumber: Int = intent.getIntExtra(Constants.PLAYER_NUMBER, 0)
+        if (matchUID.isNotEmpty()) {
+            findMatch(matchUID, playerNumber)
         }
+    }
 
+    private fun setAdapter() {
         gridLayoutManager = GridLayoutManager(this, 5)
         boardPositions = findViewById(R.id.board_positions)
         boardPositions.layoutManager = gridLayoutManager
@@ -61,10 +60,11 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
         screenHeight = displayMetrics.heightPixels
         screenWidth = displayMetrics.widthPixels
 
-        val boardPositionAdapter = BoardPositionRecyclerView(
+        val boardPositionAdapter = BoardPositionAdapter(
             screenWidth / 5,
             screenHeight / 7,
-            this
+            this,
+            player
         )
         boardPositions.adapter = boardPositionAdapter
         boardPositionAdapter.setColorList(generateData())
@@ -75,16 +75,16 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
             .child(Constants.DATABASE_REF_PLAYER)
             .addChildEventListener(object : ChildEventListener {
                 override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
-                    val player = snapshot.getValue(Player::class.java)
-                    if (player?.coordinates != null) {
-                        drawPawn(player)
+                    val newPlayer = snapshot.getValue(Player::class.java)
+                    if (newPlayer?.coordinates != null && (newPlayer.uid != player.uid || imageView!!.size == 0)) {
+                        drawPawn(newPlayer)
                     }
                 }
 
                 override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
                     val player = snapshot.getValue(Player::class.java)
                     if (player?.coordinates != null) {
-                        goTo(player.coordinates!!, player.number)
+                        goTo(player.coordinates!!, player.number!!)
                     }
                 }
 
@@ -112,62 +112,26 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
             imageView!![1].setImageResource(R.drawable.redpawn)
         }
 
-        boardLayout.addView(imageView!![player.number], boardLayout.size)
+        boardLayout.addView(imageView!![player.number!!], boardLayout.size)
     }
 
-    private fun findMatch() {
-        Util.db.child(Constants.DATABASE_REF_MATCH).child("151c63e8-5aaa-4fca-ac0c-98d3c2e1233b")
+    private fun findMatch(matchUID: String, playerNumber: Int) {
+        Util.db.child(Constants.DATABASE_REF_MATCH).child(matchUID)
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    Util.db.child(Constants.DATABASE_REF_MATCH)
-                        .child("151c63e8-5aaa-4fca-ac0c-98d3c2e1233b").removeEventListener(this)
+                    Util.db.child(Constants.DATABASE_REF_MATCH).orderByKey().equalTo(matchUID)
+                        .removeEventListener(this)
+
                     match = snapshot.getValue(Match::class.java)!!
-                    createPlayer()
+                    player = match.players[playerNumber]
                     movePlayerListener()
+                    setAdapter()
                 }
 
                 override fun onCancelled(error: DatabaseError) {
                     return
                 }
             })
-    }
-
-    private fun createMatch() {
-        createPlayer()
-        match = Match(
-            UUID.randomUUID().toString(), listOf(
-                player
-            ), 500f
-        )
-        Util.db.child(Constants.DATABASE_REF_MATCH).child(match.uid).setValue(match)
-        movePlayerListener()
-    }
-
-    private fun createPlayer(): Player {
-        val coordinates = HashMap<String, Float>()
-        coordinates["x"] = 0f
-        coordinates["y"] = 0f
-        val playerNumber =
-            if (Util.user?.uid == "ztr92NNX0fX7NIEaj1OFaHUIBFx1") 0 else 1
-        val color = if (Util.user?.uid == "ztr92NNX0fX7NIEaj1OFaHUIBFx1") Color.RED else Color.GREEN
-        player = Player(
-            Util.user?.uid.toString(),
-            Util.user?.nickname.toString(),
-            Coordinate(
-                screenWidth / 5,
-                screenHeight / 7,
-                0f,
-                0f,
-                BoardPosition("place 1", BoardRegion.TOP, Color.DKGRAY)
-            ),
-            playerNumber,
-            color
-        )
-        if (Util.user?.uid != "ztr92NNX0fX7NIEaj1OFaHUIBFx1") {
-            Util.db.child(Constants.DATABASE_REF_MATCH).child(match.uid)
-                .child(Constants.DATABASE_REF_PLAYER).child(1.toString()).setValue(player)
-        }
-        return player
     }
 
     private fun generateData(): List<BoardPosition> {
@@ -221,11 +185,12 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
 
         if (coordinate.boardPosition?.boardRegion == BoardRegion.TOP) {
             if (imageView!![number].y == coordinate.y) {
-                if (coordinate.x > imageView!![number].x) {
-                    ObjectAnimator.ofFloat(imageView!![number], "translationX", coordinate.x).apply {
-                        duration = 500
-                        start()
-                    }
+                if (coordinate.x!! > imageView!![number].x) {
+                    ObjectAnimator.ofFloat(imageView!![number], "translationX", coordinate.x!!)
+                        .apply {
+                            duration = 500
+                            start()
+                        }
                 } else {
                     ObjectAnimator.ofFloat(
                         imageView!![number],
@@ -250,7 +215,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                 ObjectAnimator.ofFloat(
                                     imageView!![number],
                                     "translationY",
-                                    coordinate.y
+                                    coordinate.y!!
                                 )
                                     .apply {
                                         duration = 500
@@ -259,7 +224,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                         ObjectAnimator.ofFloat(
                                             imageView!![number],
                                             "translationX",
-                                            coordinate.x
+                                            coordinate.x!!
                                         )
                                             .apply {
                                                 duration = 500
@@ -271,16 +236,17 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                     }
                 }
             } else if (imageView!![number].x == 0f) {
-                ObjectAnimator.ofFloat(imageView!![number], "translationY", coordinate.y).apply {
+                ObjectAnimator.ofFloat(imageView!![number], "translationY", coordinate.y!!).apply {
                     duration = 500
                     start()
                 }.doOnEnd {
-                    ObjectAnimator.ofFloat(imageView!![number], "translationX", coordinate.x).apply {
-                        duration = 500
-                        start()
-                    }
+                    ObjectAnimator.ofFloat(imageView!![number], "translationX", coordinate.x!!)
+                        .apply {
+                            duration = 500
+                            start()
+                        }
                 }
-            } else if (imageView!![number].x == screenWidth.toFloat() - coordinate.width) {
+            } else if (imageView!![number].x == screenWidth.toFloat() - coordinate.width!!) {
                 ObjectAnimator.ofFloat(
                     imageView!![number],
                     "translationY",
@@ -293,7 +259,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                         duration = 500
                         start()
                     }.doOnEnd {
-                        ObjectAnimator.ofFloat(imageView!![number], "translationY", coordinate.y)
+                        ObjectAnimator.ofFloat(imageView!![number], "translationY", coordinate.y!!)
                             .apply {
                                 duration = 500
                                 start()
@@ -301,7 +267,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                 ObjectAnimator.ofFloat(
                                     imageView!![number],
                                     "translationX",
-                                    coordinate.x
+                                    coordinate.x!!
                                 )
                                     .apply {
                                         duration = 500
@@ -315,7 +281,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                     duration = 500
                     start()
                 }.doOnEnd {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y)
+                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y!!)
                         .apply {
                             duration = 500
                             start()
@@ -323,7 +289,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                             ObjectAnimator.ofFloat(
                                 imageView?.get(number),
                                 "translationX",
-                                coordinate.x
+                                coordinate.x!!
                             )
                                 .apply {
                                     duration = 500
@@ -334,8 +300,8 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
             }
         } else if (coordinate.boardPosition?.boardRegion == BoardRegion.RIGHT) {
             if (imageView!![number].x == coordinate.x) {
-                if (coordinate.y > imageView!![number].y) {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y)
+                if (coordinate.y!! > imageView!![number].y) {
+                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y!!)
                         .apply {
                             duration = 500
                             start()
@@ -367,7 +333,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                             ObjectAnimator.ofFloat(
                                                 imageView?.get(number),
                                                 "translationX",
-                                                coordinate.x
+                                                coordinate.x!!
                                             )
                                                 .apply {
                                                     duration = 500
@@ -376,7 +342,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                                     ObjectAnimator.ofFloat(
                                                         imageView?.get(number),
                                                         "translationY",
-                                                        coordinate.y
+                                                        coordinate.y!!
                                                     )
                                                         .apply {
                                                             duration = 500
@@ -388,22 +354,27 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                         }
                 }
             } else if (imageView!![number].y == 0f) {
-                ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x).apply {
-                    duration = 500
-                    start()
-                }.doOnEnd {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y)
-                        .apply {
-                            duration = 500
-                            start()
-                        }
-                }
+                ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x!!)
+                    .apply {
+                        duration = 500
+                        start()
+                    }.doOnEnd {
+                        ObjectAnimator.ofFloat(
+                            imageView?.get(number),
+                            "translationY",
+                            coordinate.y!!
+                        )
+                            .apply {
+                                duration = 500
+                                start()
+                            }
+                    }
             } else if (imageView!![number].x == 0f) {
                 ObjectAnimator.ofFloat(imageView?.get(number), "translationY", 0f).apply {
                     duration = 500
                     start()
                 }.doOnEnd {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x)
+                    ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x!!)
                         .apply {
                             duration = 500
                             start()
@@ -411,7 +382,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                             ObjectAnimator.ofFloat(
                                 imageView?.get(number),
                                 "translationY",
-                                coordinate.y
+                                coordinate.y!!
                             )
                                 .apply {
                                     duration = 500
@@ -428,7 +399,10 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                         duration = 500
                         start()
                     }.doOnEnd {
-                        ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x)
+                        ObjectAnimator.ofFloat(
+                            imageView?.get(number), "translationX",
+                            coordinate.x!!
+                        )
                             .apply {
                                 duration = 500
                                 start()
@@ -436,7 +410,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                 ObjectAnimator.ofFloat(
                                     imageView?.get(number),
                                     "translationY",
-                                    coordinate.y
+                                    coordinate.y!!
                                 )
                                     .apply {
                                         duration = 500
@@ -448,8 +422,8 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
             }
         } else if (coordinate.boardPosition?.boardRegion == BoardRegion.LEFT) {
             if (imageView!![number].x == coordinate.x) {
-                if (coordinate.y < imageView!![number].y) {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y)
+                if (coordinate.y!! < imageView!![number].y) {
+                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y!!)
                         .apply {
                             duration = 500
                             start()
@@ -478,7 +452,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                 ObjectAnimator.ofFloat(
                                     imageView?.get(number),
                                     "translationX",
-                                    coordinate.x
+                                    coordinate.x!!
                                 )
                                     .apply {
                                         duration = 500
@@ -487,7 +461,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                         ObjectAnimator.ofFloat(
                                             imageView?.get(number),
                                             "translationY",
-                                            coordinate.y
+                                            coordinate.y!!
                                         )
                                             .apply {
                                                 duration = 500
@@ -515,7 +489,10 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                         duration = 500
                         start()
                     }.doOnEnd {
-                        ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x)
+                        ObjectAnimator.ofFloat(
+                            imageView?.get(number), "translationX",
+                            coordinate.x!!
+                        )
                             .apply {
                                 duration = 500
                                 start()
@@ -523,7 +500,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                 ObjectAnimator.ofFloat(
                                     imageView?.get(number),
                                     "translationY",
-                                    coordinate.y
+                                    coordinate.y!!
                                 )
                                     .apply {
                                         duration = 500
@@ -532,18 +509,23 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                             }
                     }
                 }
-            } else if (imageView!![number].y == screenHeight.toFloat() - coordinate.height) {
-                ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x).apply {
-                    duration = 500
-                    start()
-                }.doOnEnd {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y)
-                        .apply {
-                            duration = 500
-                            start()
-                        }
-                }
-            } else if (imageView!![number].x == screenWidth.toFloat() - coordinate.width) {
+            } else if (imageView!![number].y == screenHeight.toFloat() - coordinate.height!!) {
+                ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x!!)
+                    .apply {
+                        duration = 500
+                        start()
+                    }.doOnEnd {
+                        ObjectAnimator.ofFloat(
+                            imageView?.get(number),
+                            "translationY",
+                            coordinate.y!!
+                        )
+                            .apply {
+                                duration = 500
+                                start()
+                            }
+                    }
+            } else if (imageView!![number].x == screenWidth.toFloat() - coordinate.width!!) {
                 ObjectAnimator.ofFloat(
                     imageView?.get(number),
                     "translationY",
@@ -552,7 +534,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                     duration = 500
                     start()
                 }.doOnEnd {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x)
+                    ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x!!)
                         .apply {
                             duration = 500
                             start()
@@ -560,7 +542,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                             ObjectAnimator.ofFloat(
                                 imageView?.get(number),
                                 "translationY",
-                                coordinate.y
+                                coordinate.y!!
                             )
                                 .apply {
                                     duration = 500
@@ -571,8 +553,8 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
             }
         } else if (coordinate.boardPosition?.boardRegion == BoardRegion.BOTTOM) {
             if (imageView!![number].y == coordinate.y) {
-                if (coordinate.x < imageView!![number].x) {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x)
+                if (coordinate.x!! < imageView!![number].x) {
+                    ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x!!)
                         .apply {
                             duration = 500
                             start()
@@ -597,7 +579,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                 ObjectAnimator.ofFloat(
                                     imageView?.get(number),
                                     "translationY",
-                                    coordinate.y
+                                    coordinate.y!!
                                 )
                                     .apply {
                                         duration = 500
@@ -606,7 +588,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                         ObjectAnimator.ofFloat(
                                             imageView?.get(number),
                                             "translationX",
-                                            coordinate.x
+                                            coordinate.x!!
                                         )
                                             .apply {
                                                 duration = 500
@@ -626,7 +608,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                     duration = 500
                     start()
                 }.doOnEnd {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y)
+                    ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y!!)
                         .apply {
                             duration = 500
                             start()
@@ -634,7 +616,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                             ObjectAnimator.ofFloat(
                                 imageView?.get(number),
                                 "translationX",
-                                coordinate.x
+                                coordinate.x!!
                             )
                                 .apply {
                                     duration = 500
@@ -655,7 +637,10 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                         duration = 500
                         start()
                     }.doOnEnd {
-                        ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y)
+                        ObjectAnimator.ofFloat(
+                            imageView?.get(number), "translationY",
+                            coordinate.y!!
+                        )
                             .apply {
                                 duration = 500
                                 start()
@@ -663,7 +648,7 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                                 ObjectAnimator.ofFloat(
                                     imageView?.get(number),
                                     "translationX",
-                                    coordinate.x
+                                    coordinate.x!!
                                 )
                                     .apply {
                                         duration = 500
@@ -672,27 +657,33 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
                             }
                     }
                 }
-            } else if (imageView!![number].x == screenWidth.toFloat() - coordinate.width) {
-                ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y).apply {
-                    duration = 500
-                    start()
-                }.doOnEnd {
-                    ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x)
-                        .apply {
-                            duration = 500
-                            start()
-                        }
-                }
+            } else if (imageView!![number].x == screenWidth.toFloat() - coordinate.width!!) {
+                ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y!!)
+                    .apply {
+                        duration = 500
+                        start()
+                    }.doOnEnd {
+                        ObjectAnimator.ofFloat(
+                            imageView?.get(number),
+                            "translationX",
+                            coordinate.x!!
+                        )
+                            .apply {
+                                duration = 500
+                                start()
+                            }
+                    }
             }
         } else {
-            ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x).apply {
+            ObjectAnimator.ofFloat(imageView?.get(number), "translationX", coordinate.x!!).apply {
                 duration = 500
                 start()
             }.doOnEnd {
-                ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y).apply {
-                    duration = 500
-                    start()
-                }
+                ObjectAnimator.ofFloat(imageView?.get(number), "translationY", coordinate.y!!)
+                    .apply {
+                        duration = 500
+                        start()
+                    }
             }
         }
     }
@@ -702,19 +693,19 @@ class BoardGameActivity : AppCompatActivity(), ChangePosition {
         height: Int,
         x: Float,
         y: Float,
-        boardPosition: BoardPosition
+        boardPosition: BoardPosition, player: Player
     ) {
         if (player.coordinates?.x != x
             || player.coordinates?.y != y
         ) {
             val newCoordinates = Coordinate(width, height, x, y, boardPosition)
-            updateCoordinates(newCoordinates)
+            updateCoordinates(newCoordinates, player.number!!)
         }
     }
 
-    private fun updateCoordinates(newCoordinates: Coordinate) {
+    private fun updateCoordinates(newCoordinates: Coordinate, playerNumber: Int) {
         Util.db.child(Constants.DATABASE_REF_MATCH).child(match.uid)
-            .child(Constants.DATABASE_REF_PLAYER).child(player.number.toString())
+            .child(Constants.DATABASE_REF_PLAYER).child(playerNumber.toString())
             .child(Constants.DATABASE_REF_COORDINATE).setValue(newCoordinates)
     }
 }

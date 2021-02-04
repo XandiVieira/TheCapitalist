@@ -2,53 +2,132 @@ package com.relyon.thecapitalist
 
 import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageInfo
-import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
-import android.util.Base64
-import android.util.Log
+import android.util.DisplayMetrics
+import android.view.View
+import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
-import com.facebook.login.widget.LoginButton
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.*
 import com.google.firebase.iid.FirebaseInstanceId
 import com.google.firebase.iid.InstanceIdResult
-import com.relyon.thecapitalist.model.User
+import com.relyon.thecapitalist.adapter.MatchAdapter
+import com.relyon.thecapitalist.enums.BoardRegion
+import com.relyon.thecapitalist.enums.MatchStatus
+import com.relyon.thecapitalist.model.*
 import com.relyon.thecapitalist.util.Constants
 import com.relyon.thecapitalist.util.Util
-import java.security.MessageDigest
-import java.security.NoSuchAlgorithmException
-
+import java.util.*
 
 class MainActivity : AppCompatActivity() {
 
-    private val activity: Activity? = null
+    private var activity: Activity? = null
     private var firebaseUser: FirebaseUser? = null
     private var user: User? = null
     private var db: DatabaseReference? = null
     private var firebaseInstanceId: String? = null
+    private lateinit var linearLayoutManager: LinearLayoutManager
 
-    private lateinit var loginButton: LoginButton
+    private lateinit var createMatch: Button
+    private lateinit var findMatch: Button
+    private lateinit var matchesRV: RecyclerView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        activity = this
+
         startFirebaseInstances()
         setLayoutAttributes()
-
-        firebaseUser = FirebaseAuth.getInstance().currentUser
-        FirebaseInstanceId.getInstance().instanceId.addOnSuccessListener { instanceIdResult: InstanceIdResult ->
-            firebaseInstanceId = instanceIdResult.token
-        }
 
         if (firebaseUser == null) {
             goLoginScreen()
         } else {
             retrieveUser()
         }
+
+        createMatch.setOnClickListener {
+            createMatch()
+        }
+
+        findMatch.setOnClickListener {
+            findMatch()
+        }
+    }
+
+    private fun findMatch() {
+        val matchesInLobby: MutableList<Match> = mutableListOf()
+        Util.db.child(Constants.DATABASE_REF_MATCH)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    Util.db.child(Constants.DATABASE_REF_MATCH).removeEventListener(this)
+                    for (DataSnapshot in snapshot.children) {
+                        val match = DataSnapshot.getValue(Match::class.java)!!
+                        if (match.players.isNotEmpty()) {
+                            matchesInLobby.add(match)
+                        }
+                    }
+                    linearLayoutManager = LinearLayoutManager(applicationContext)
+                    matchesRV.layoutManager = linearLayoutManager
+                    val matchAdapter = MatchAdapter(
+                        applicationContext,
+                        activity!!
+                    )
+                    matchesRV.adapter = matchAdapter
+                    matchAdapter.setMatchesList(matchesInLobby)
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    return
+                }
+            })
+    }
+
+    private fun createMatch() {
+        val match = Match(
+            UUID.randomUUID().toString(), listOf(
+                createPlayer()
+            ), 500f, MatchStatus.LOBBY
+        )
+        Util.db.child(Constants.DATABASE_REF_MATCH).child(match.uid).setValue(match)
+        startActivity(
+            Intent(
+                applicationContext,
+                BoardGameActivity::class.java
+            ).putExtra(Constants.MATCH_UID, match.uid)
+        )
+    }
+
+    private fun createPlayer(): Player {
+        val coordinates = HashMap<String, Float>()
+        coordinates["x"] = 0f
+        coordinates["y"] = 0f
+
+        val playerNumber = 0
+
+        val color = Color.RED
+        val displayMetrics = DisplayMetrics()
+        windowManager.defaultDisplay.getMetrics(displayMetrics)
+        return Player(
+            Util.user?.uid.toString(),
+            Util.user?.nickname.toString(),
+            Coordinate(
+                displayMetrics.widthPixels / 5,
+                displayMetrics.heightPixels / 7,
+                0f,
+                0f,
+                BoardPosition("place 1", BoardRegion.TOP, Color.DKGRAY)
+            ),
+            playerNumber!!,
+            color,
+            true
+        )
     }
 
     private fun retrieveUser() {
@@ -65,7 +144,8 @@ class MainActivity : AppCompatActivity() {
                     }
                     Util.user = user
                     updateToken()
-                    startActivity(Intent(applicationContext, BoardGameActivity::class.java))
+                    findMatch.visibility = View.VISIBLE
+                    createMatch.visibility = View.VISIBLE
                 }
 
                 override fun onCancelled(databaseError: DatabaseError) {}
@@ -91,7 +171,7 @@ class MainActivity : AppCompatActivity() {
             firebaseUser?.displayName.toString(),
             firebaseUser?.photoUrl.toString()
         )
-        db?.child(Constants.DATABASE_REF_USER)?.child(user!!.uid)?.setValue(user)
+        db?.child(Constants.DATABASE_REF_USER)?.child(user!!.uid.toString())?.setValue(user)
     }
 
     private fun goLoginScreen() {
@@ -101,7 +181,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setLayoutAttributes() {
-
+        createMatch = findViewById(R.id.create_match)
+        findMatch = findViewById(R.id.find_match)
+        matchesRV = findViewById(R.id.matches)
     }
 
     private fun startFirebaseInstances() {
@@ -110,5 +192,10 @@ class MainActivity : AppCompatActivity() {
         val mDatabaseRef = mFirebaseDatabase.reference
         db = mDatabaseRef
         Util.db = db as DatabaseReference
+
+        firebaseUser = FirebaseAuth.getInstance().currentUser
+        FirebaseInstanceId.getInstance().instanceId.addOnSuccessListener { instanceIdResult: InstanceIdResult ->
+            firebaseInstanceId = instanceIdResult.token
+        }
     }
 }
